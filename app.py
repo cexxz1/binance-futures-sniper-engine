@@ -152,6 +152,66 @@ def calc_atr(highs, lows, closes, period=14):
 
 RADAR_STATE = {}
 
+def update_radar():
+    global RADAR_STATE
+    while True:
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=10)
+            c = conn.cursor()
+            c.execute('SELECT symbol FROM active_signals WHERE status="ACTIVE"')
+            active_symbols = set(r[0] for r in c.fetchall())
+            conn.close()
+
+            new_radar = {}
+            for sym in TOP_15_CHAMPIONS:
+                try:
+                    url = f'https://fapi.binance.com/fapi/v1/klines?symbol={sym}&interval=1h&limit=150'
+                    klines = fetch_json(url)
+                    closes = [float(k[4]) for k in klines]
+                    highs  = [float(k[2]) for k in klines]
+                    lows   = [float(k[3]) for k in klines]
+                    vols   = [float(k[5]) for k in klines]
+                    
+                    e9 = calc_ema(closes, 9)
+                    e21 = calc_ema(closes, 21)
+                    e99 = calc_ema(closes, 99)
+                    r14 = calc_rsi(closes, 14)
+                    atr14 = calc_atr(highs, lows, closes, 14)
+                    
+                    cur_price = closes[-1]
+                    cur_e9    = e9[-1]
+                    cur_e21   = e21[-1]
+                    cur_e99   = e99[-1]
+                    cur_rsi   = r14[-1] if len(r14) > 0 else 50.0
+                    cur_atr   = atr14[-1]
+                    atr_pct   = (cur_atr / cur_price) * 100.0
+
+                    vol_sma = sum(vols[-21:-1]) / 20.0 if len(vols) >= 21 else 1.0
+                    vol_ratio = vols[-1] / vol_sma if vol_sma > 0 else 1.0
+
+                    rec_lev = calculate_optimal_leverage(atr_pct, vol_ratio, cur_rsi)
+                    status_str = "BOĞA TRENDİNDE" if cur_e9 > cur_e21 > cur_e99 else "NÖTR / BEKLE"
+                    
+                    new_radar[sym] = {
+                        'price': cur_price,
+                        'e9': cur_e9,
+                        'e21': cur_e21,
+                        'rsi': cur_rsi,
+                        'vol_ratio': vol_ratio,
+                        'atr_pct': atr_pct,
+                        'rec_leverage': rec_lev,
+                        'status': status_str,
+                        'is_active': sym in active_symbols
+                    }
+                    time.sleep(0.05)
+                except Exception as e:
+                    pass
+            RADAR_STATE = new_radar
+        except Exception:
+            pass
+        time.sleep(5)
+
+
 def scanner_loop():
     while True:
         try:
@@ -578,9 +638,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 def run_server():
+    t_radar = threading.Thread(target=update_radar, daemon=True)
+    t_radar.start()
     t_scan = threading.Thread(target=scanner_loop, daemon=True)
     t_scan.start()
-    print("Scanner thread started successfully.")
+    print("Background threads started successfully.")
     port = int(os.environ.get('PORT', 8080))
     server = HTTPServer(('0.0.0.0', port), RequestHandler)
     server.serve_forever()
