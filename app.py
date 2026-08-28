@@ -578,10 +578,12 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 def run_server():
-    server = HTTPServer(('0.0.0.0', 8080), RequestHandler)
+    t_scan = threading.Thread(target=scanner_loop, daemon=True)
+    t_scan.start()
+    print("Scanner thread started successfully.")
+    port = int(os.environ.get('PORT', 8080))
+    server = HTTPServer(('0.0.0.0', port), RequestHandler)
     server.serve_forever()
 
 if __name__ == '__main__':
-    t_scan = threading.Thread(target=scanner_loop, daemon=True)
-    t_scan.start()
     run_server()
