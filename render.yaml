@@ -1,2 +1,11 @@
-PORT=8080
-PYTHON_VERSION=3.12.0
+services:
+  - type: web
+    name: binance-futures-sniper-engine
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python app.py"
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: PYTHON_VERSION
+        value: 3.12.0
