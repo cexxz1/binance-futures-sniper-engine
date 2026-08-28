@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MTF Trend Signal Engine — Otomasyon & Win-Rate Terminali</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          },
+          colors: {
+            darkbg: '#090D16',
+            cardbg: '#0F172A',
+            surface: '#1E293B',
+            borderdark: '#334155'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #090D16;
+      color: #F1F5F9;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    .signal-glow-long {
+      box-shadow: 0 0 35px -5px rgba(16, 185, 129, 0.45);
+      border-color: rgba(16, 185, 129, 0.9) !important;
+    }
+    .signal-glow-short {
+      box-shadow: 0 0 35px -5px rgba(244, 63, 94, 0.45);
+      border-color: rgba(244, 63, 94, 0.9) !important;
+    }
+    @keyframes pulse-fast {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .animate-radar {
+      animation: pulse-fast 1.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased">
+
+  <!-- HEADER -->
+  <header class="bg-cardbg/90 backdrop-blur-md border-b border-borderdark sticky top-0 z-40 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-emerald-500 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg shadow-amber-500/20">
+        ⚡
+      </div>
+      <div>
+        <h1 class="text-base font-extrabold text-white tracking-tight flex items-center gap-2">
+          MTF SIGNAL ENGINE <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-500 text-slate-950 font-black uppercase tracking-wider">OTOMATİK İŞLEM & PERFORMANS</span>
+        </h1>
+        <div class="flex items-center gap-2 text-xs text-slate-400 mt-0.5 font-mono">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500" id="ws-status-dot"></span>
+          <span id="ws-status-text" class="text-emerald-400 font-bold">Canlı Takip Aktif (Sayfa Yenilemeye Gerek Yok)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-3">
+      <!-- Canlı Heartbeat / Son Tarama Sayacı -->
+      <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface/80 border border-borderdark text-xs font-mono text-slate-300">
+        <i class="fa-solid fa-radar text-amber-400 animate-radar"></i>
+        <span>Son Tarama: <span id="last-scan-time" class="text-emerald-400 font-bold">Canlı Akış</span></span>
+      </div>
+
+      <button onclick="toggleSound()" class="px-3.5 py-1.5 rounded-lg bg-surface hover:bg-slate-800 border border-borderdark text-xs font-semibold text-slate-300 transition flex items-center gap-1.5">
+        <i class="fa-solid fa-volume-high text-amber-400" id="sound-icon"></i>
+        <span id="sound-text">Ses Açık</span>
+      </button>
+
+      <button onclick="openSettingsModal()" class="px-3 py-1.5 rounded-lg bg-surface hover:bg-slate-800 border border-borderdark text-xs font-semibold text-slate-300 transition flex items-center gap-1.5">
+        <i class="fa-solid fa-gear text-slate-400"></i>
+        <span>Ayarlar</span>
+      </button>
+
+      <button onclick="triggerScan()" class="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-lg shadow-blue-500/25 transition flex items-center gap-1.5 active:scale-95">
+        <i class="fa-solid fa-rotate"></i>
+        <span>Şimdi Tara</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- WIN RATE & 10X ISOLATED KASA SİMÜLASYONU BARI -->
+  <div class="bg-surface/70 border-b border-borderdark px-6 py-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs font-mono">
+    <div class="bg-cardbg/90 px-3.5 py-2 rounded-xl border border-borderdark">
+      <span class="text-slate-400 block text-[10px]">10x Kasa (Başlangıç 1,000$)</span>
+      <span class="text-white font-black text-sm" id="stat-current-balance">$1,000.00</span>
+    </div>
+    <div class="bg-cardbg/90 px-3.5 py-2 rounded-xl border border-borderdark">
+      <span class="text-slate-400 block text-[10px]">Net Kâr / Zarar (ROI)</span>
+      <span class="text-emerald-400 font-black text-sm" id="stat-net-pnl">+$0.00 (%0.0)</span>
+    </div>
+    <div class="bg-cardbg/90 px-3.5 py-2 rounded-xl border border-borderdark">
+      <span class="text-slate-400 block text-[10px]">Kazanma Oranı (Win Rate)</span>
+      <span class="text-emerald-400 font-black text-sm" id="stat-winrate">%0.0</span>
+    </div>
+    <div class="bg-cardbg/90 px-3.5 py-2 rounded-xl border border-borderdark">
+      <span class="text-slate-400 block text-[10px]">Profit Factor (Kâr Faktörü)</span>
+      <span class="text-amber-400 font-black text-sm" id="stat-pf">0.00</span>
+    </div>
+    <div class="bg-cardbg/90 px-3.5 py-2 rounded-xl border border-borderdark">
+      <span class="text-slate-400 block text-[10px]">Max Drawdown (Düşüş)</span>
+      <span class="text-rose-400 font-black text-sm" id="stat-max-dd">$0.00</span>
+    </div>
+    <div class="bg-cardbg/90 px-3.5 py-2 rounded-xl border border-borderdark">
+      <span class="text-slate-400 block text-[10px]">Likidasyon Riski (10x)</span>
+      <span class="text-emerald-400 font-black text-sm" id="stat-liq-risk">SIFIR (%10 vs %1.5 SL)</span>
+    </div>
+  </div>
+
+  <!-- TOAST ALERTS CONTAINER -->
+  <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col gap-3 pointer-events-none"></div>
+
+  <!-- MAIN BODY -->
+  <main class="flex-1 p-6 space-y-6 max-w-[1500px] w-full mx-auto">
+
+    <!-- 1. SADECE AÇILACAK AKTİF İŞLEMLER (OTOMATİK DÜŞER) -->
+    <section class="space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+          <i class="fa-solid fa-fire text-amber-400 animate-bounce"></i> ŞU AN AÇILACAK İŞLEMLER (CANLI SİNYALLER)
+        </h2>
+        <span class="text-xs text-amber-400 font-mono font-bold" id="active-summary">0 Açık Sinyal</span>
+      </div>
+
+      <div id="active-signals-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <!-- JS ile dolacak -->
+      </div>
+    </section>
+
+    <!-- 2. GEÇMİŞ İŞLEMLER VE KÂR/ZARAR GEÇMİŞİ (AUDIT LOG) -->
+    <section class="bg-cardbg border border-borderdark rounded-2xl p-5 shadow-xl">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left text-blue-400"></i> İşlem Denetim Logu (Kâr / Zarar & Trailing)
+          </h2>
+          <p class="text-xs text-slate-400">Tetiklenen ve kapatılan tüm işlemlerin anlık doğruluk logu</p>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead class="bg-surface text-slate-400 font-semibold border-b border-borderdark uppercase text-[11px]">
+            <tr>
+              <th class="py-3 px-4">Parite</th>
+              <th class="py-3 px-4">Yön</th>
+              <th class="py-3 px-4">Giriş Fiyatı</th>
+              <th class="py-3 px-4">Ana Destek (SL)</th>
+              <th class="py-3 px-4">Ana Direnç (TP1)</th>
+              <th class="py-3 px-4">Ulaşılan Max Kâr (R)</th>
+              <th class="py-3 px-4">Kapanış Durumu</th>
+              <th class="py-3 px-4">Tarih</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody" class="divide-y divide-borderdark/50 text-slate-300">
+            <tr>
+              <td colspan="8" class="py-10 text-center text-slate-500">Henüz geçmiş işlem kaydı yok.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-cardbg border border-borderdark rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-5">
+      <div class="flex items-center justify-between border-b border-borderdark pb-4">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-blue-400"></i> Sistem Ayarları & Telegram
+        </h3>
+        <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white text-sm">✕</button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div class="p-3 rounded-xl bg-blue-950/40 border border-blue-500/30 text-blue-200">
+          <i class="fa-solid fa-circle-info mr-1 text-blue-400"></i>
+          Sistem sadece tüm kriterleri geçen pariteleri sinyal olarak verir.
+        </div>
+
+        <div class="border-t border-borderdark pt-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-slate-300 font-bold">Telegram Otomatik Bildirim</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="cfg-telegram-enabled" class="sr-only peer">
+              <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+          <div class="space-y-2">
+            <input type="text" id="cfg-tg-token" placeholder="Telegram Bot Token" class="w-full bg-surface border border-borderdark px-3 py-2 rounded-lg text-white font-mono focus:border-blue-500 focus:outline-none">
+            <input type="text" id="cfg-tg-chat" placeholder="Telegram Chat ID" class="w-full bg-surface border border-borderdark px-3 py-2 rounded-lg text-white font-mono focus:border-blue-500 focus:outline-none">
+          </div>
+        </div>
+
+        <div class="border-t border-borderdark pt-3 grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-slate-400 mb-1">TP Modu</label>
+            <select id="cfg-tp-mode" class="w-full bg-surface border border-borderdark px-3 py-1.5 rounded-lg text-white font-mono">
+              <option value="PARTIAL_TRAIL">PARTIAL_TRAIL (%50 TP1 + Trailing)</option>
+              <option value="FULL">FULL (Tam Kapat)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Max Hold Bars</label>
+            <input type="number" id="cfg-max-hold-bars" class="w-full bg-surface border border-borderdark px-3 py-1.5 rounded-lg text-white font-mono">
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 border-t border-borderdark pt-4">
+        <button onclick="closeSettingsModal()" class="px-4 py-2 rounded-lg bg-surface hover:bg-slate-800 text-slate-300 text-xs font-semibold transition">İptal</button>
+        <button onclick="saveSettings()" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-lg shadow-blue-500/20">Kaydet</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCRIPT -->
+  <script>
+    let soundEnabled = true;
+    let audioCtx = null;
+    let ws = null;
+    let pingInterval = null;
+
+    function initAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function playAlertSound(type = 'long') {
+      if (!soundEnabled) return;
+      initAudio();
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+
+        if (type === 'long') {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(523.25, now);
+          osc.frequency.setValueAtTime(659.25, now + 0.1);
+          osc.frequency.setValueAtTime(783.99, now + 0.2);
+          gain.gain.setValueAtTime(0.4, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+          osc.start(now);
+          osc.stop(now + 0.6);
+        } else {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(440, now);
+          osc.frequency.setValueAtTime(330, now + 0.15);
+          gain.gain.setValueAtTime(0.4, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+          osc.start(now);
+          osc.stop(now + 0.6);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function toggleSound() {
+      soundEnabled = !soundEnabled;
+      const icon = document.getElementById('sound-icon');
+      const text = document.getElementById('sound-text');
+      if (soundEnabled) {
+        icon.className = 'fa-solid fa-volume-high text-amber-400';
+        text.innerText = 'Ses Açık';
+        playAlertSound('long');
+      } else {
+        icon.className = 'fa-solid fa-volume-xmark text-slate-500';
+        text.innerText = 'Ses Kapalı';
+      }
+    }
+
+    function showToast(title, body, isLong = true) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `p-4 rounded-2xl border shadow-2xl backdrop-blur-xl transition transform duration-300 translate-y-2 pointer-events-auto flex items-start gap-3.5 w-96 ${
+        isLong ? 'bg-emerald-950/90 border-emerald-500/60 text-emerald-100 shadow-emerald-950/50' : 'bg-rose-950/90 border-rose-500/60 text-rose-100 shadow-rose-950/50'
+      }`;
+      toast.innerHTML = `
+        <div class="mt-0.5 text-xl ${isLong ? 'text-emerald-400' : 'text-rose-400'}">
+          <i class="fa-solid ${isLong ? 'fa-circle-arrow-up' : 'fa-circle-arrow-down'}"></i>
+        </div>
+        <div class="flex-1">
+          <div class="font-extrabold text-sm text-white flex items-center justify-between">
+            <span>${title}</span>
+            <span class="text-[10px] opacity-75 font-mono">${new Date().toLocaleTimeString()}</span>
+          </div>
+          <div class="text-xs opacity-90 mt-1 font-mono">${body}</div>
+        </div>
+        <button onclick="this.parentElement.remove()" class="text-slate-400 hover:text-white text-xs">✕</button>
+      `;
+      container.appendChild(toast);
+      setTimeout(() => toast.classList.remove('translate-y-2'), 10);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 400);
+      }, 8000);
+    }
+
+    let appState = {
+      activeSignals: [],
+      recentSignals: []
+    };
+
+    async function fetchStats() {
+      try {
+        const stats = await fetch('/api/signals/stats').then(r => r.json());
+        document.getElementById('stat-winrate').innerText = `%${stats.win_rate_pct}`;
+        document.getElementById('stat-pf').innerText = stats.profit_factor;
+        document.getElementById('stat-current-balance').innerText = `$${stats.current_balance_usdt.toFixed(2)}`;
+        
+        const sign = stats.net_pnl_usdt >= 0 ? '+' : '';
+        const pnlEl = document.getElementById('stat-net-pnl');
+        pnlEl.innerText = `${sign}$${stats.net_pnl_usdt.toFixed(2)} (${sign}%${stats.roi_pct})`;
+        pnlEl.className = stats.net_pnl_usdt >= 0 ? 'text-emerald-400 font-black text-sm' : 'text-rose-400 font-black text-sm';
+        
+        document.getElementById('stat-max-dd').innerText = `-$${stats.max_drawdown_usdt.toFixed(2)}`;
+        document.getElementById('stat-liq-risk').innerText = stats.liq_risk_status;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function renderActiveSignals() {
+      const container = document.getElementById('active-signals-grid');
+      const summaryText = document.getElementById('active-summary');
+      const count = appState.activeSignals.length;
+      summaryText.innerText = `${count} Açık Sinyal`;
+
+      if (!count) {
+        container.innerHTML = `
+          <div class="col-span-full bg-cardbg border border-borderdark rounded-2xl p-12 text-center text-slate-500 text-sm">
+            <i class="fa-solid fa-shield-halved text-3xl mb-3 text-emerald-500/80 block"></i>
+            <div class="font-bold text-slate-200 text-base mb-1">Şu an açılacak kesinleşmiş işlem yok</div>
+            <div class="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
+              Arka planda tüm Binance pariteleri taranıyor. Bir coin şartları sağladığında <b>sayfayı yenilemeden</b> anında buraya düşecek ve ses çalacaktır.
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = appState.activeSignals.map(sig => {
+        const isLong = sig.direction === 'LONG';
+        const isPartial = sig.status === 'PARTIAL_TP1_HIT';
+        
+        let glowClass = isLong ? 'signal-glow-long bg-emerald-950/30' : 'signal-glow-short bg-rose-950/30';
+        if (isPartial) glowClass = 'bg-blue-950/30 border-blue-500/80 shadow-blue-500/20';
+
+        const badgeColor = isLong ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white';
+        const statusBadge = isPartial 
+          ? '<span class="px-2.5 py-1 rounded-full font-black text-xs bg-blue-500 text-white animate-pulse">💰 TP1 ALINDI (%50 TRAILING)</span>'
+          : `<span class="px-3 py-1 rounded-full font-black text-xs ${badgeColor}">🔥 İŞLEME GİR: ${sig.direction}</span>`;
+
+        const sup = sig.key_support ? `$${sig.key_support}` : '-';
+        const res = sig.key_resistance ? `$${sig.key_resistance}` : '-';
+
+        return `
+          <div class="border-2 ${glowClass} rounded-2xl p-6 shadow-2xl relative overflow-hidden flex flex-col justify-between backdrop-blur-md">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-2.5">
+                <span class="font-black text-2xl text-white tracking-wide">${sig.symbol}</span>
+                ${statusBadge}
+              </div>
+              <span class="text-xs text-slate-400 font-mono flex items-center gap-1">
+                <i class="fa-regular fa-clock"></i> ${new Date(sig.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+              </span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 bg-surface/90 p-3.5 rounded-xl border border-borderdark mb-4 text-xs">
+              <div class="border-r border-borderdark/60 pr-2">
+                <div class="text-emerald-400 text-[10px] uppercase font-bold">Ana Destek (SL Seviyesi)</div>
+                <div class="font-mono font-black text-white text-base mt-0.5">${sup}</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">${isLong ? 'Bunun altına inerse stop ol' : 'Giriş destek bölgesi'}</div>
+              </div>
+              <div class="pl-2">
+                <div class="text-rose-400 text-[10px] uppercase font-bold">Ana Direnç (Hedef / TP1)</div>
+                <div class="font-mono font-black text-white text-base mt-0.5">${res}</div>
+                <div class="text-[10px] text-slate-400 mt-0.5">${isLong ? 'Kâr alınacak ana direnç' : 'Bunun üstüne çıkarsa stop ol'}</div>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 bg-darkbg/90 p-3 rounded-xl border border-borderdark/60 text-xs mb-4 font-mono">
+              <div>
+                <span class="text-slate-500 block text-[10px] uppercase font-bold">Giriş Fiyatı</span>
+                <span class="text-white font-extrabold text-sm">${sig.entry}</span>
+              </div>
+              <div>
+                <span class="text-rose-400 block text-[10px] uppercase font-bold">Stop Loss (SL)</span>
+                <span class="text-rose-300 font-extrabold text-sm">${sig.stop}</span>
+              </div>
+              <div>
+                <span class="text-emerald-400 block text-[10px] uppercase font-bold">Hedef 1.5R (TP1)</span>
+                <span class="text-emerald-300 font-extrabold text-sm">${sig.tp1}</span>
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-borderdark/50 font-mono">
+              <div><span class="text-slate-500">Trailing:</span> <span class="text-blue-300 font-bold">${sig.trailing_reference || 'EMA21_1h'}</span></div>
+              <div><span class="text-slate-500">Kâr:</span> <span class="text-amber-300 font-bold">${(sig.mfe_atr || 0).toFixed(2)} R</span></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderRecentSignals() {
+      const tbody = document.getElementById('history-tbody');
+      if (!appState.recentSignals.length) {
+        tbody.innerHTML = '<tr><td colspan="8" class="py-8 text-center text-slate-500">Henüz geçmiş sinyal yok.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = appState.recentSignals.map(sig => {
+        const isLong = sig.direction === 'LONG';
+        const dirBadge = isLong 
+          ? '<span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40 font-bold">LONG</span>' 
+          : '<span class="px-2 py-0.5 rounded bg-rose-950 text-rose-400 border border-rose-500/40 font-bold">SHORT</span>';
+        
+        let statusBadge = '<span class="px-2 py-0.5 rounded bg-blue-900/40 text-blue-300 text-[10px] font-bold">AÇIK</span>';
+        if (sig.status === 'PARTIAL_TP1_HIT') statusBadge = '<span class="px-2 py-0.5 rounded bg-emerald-900/50 text-emerald-300 text-[10px] font-bold">TP1 ALINDI</span>';
+        else if (sig.status === 'CLOSED_TRAIL_STOP') statusBadge = '<span class="px-2 py-0.5 rounded bg-blue-900/60 text-blue-300 text-[10px] font-bold">TRAIL İLE KAPANDI</span>';
+        else if (sig.status === 'CLOSED_STOP_HIT') statusBadge = '<span class="px-2 py-0.5 rounded bg-rose-900/50 text-rose-300 text-[10px] font-bold">STOP OLDU</span>';
+        else if (sig.status === 'EXPIRED_TIME_DECAY') statusBadge = '<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">ZAMAN AŞIMI</span>';
+
+        const sup = sig.key_support ? `$${sig.key_support}` : '-';
+        const res = sig.key_resistance ? `$${sig.key_resistance}` : '-';
+        const dateStr = sig.created_at ? new Date(sig.created_at).toLocaleString([], {month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'}) : '-';
+
+        return `
+          <tr class="hover:bg-surface/40 transition">
+            <td class="py-3 px-4 font-black text-white">${sig.symbol}</td>
+            <td class="py-3 px-4">${dirBadge}</td>
+            <td class="py-3 px-4 font-mono font-bold">${sig.entry}</td>
+            <td class="py-3 px-4 font-mono text-emerald-400">${sup}</td>
+            <td class="py-3 px-4 font-mono text-rose-400">${res}</td>
+            <td class="py-3 px-4 font-mono text-amber-300 font-bold">${(sig.mfe_atr || 0).toFixed(2)} R</td>
+            <td class="py-3 px-4">${statusBadge}</td>
+            <td class="py-3 px-4 text-slate-400 font-mono text-[11px]">${dateStr}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function fetchHttpSnapshot() {
+      try {
+        const [resAct, resRec] = await Promise.all([
+          fetch('/api/signals/active').then(r => r.json()),
+          fetch('/api/signals/recent').then(r => r.json())
+        ]);
+        appState.activeSignals = resAct || [];
+        appState.recentSignals = resRec || [];
+        renderActiveSignals();
+        renderRecentSignals();
+        fetchStats();
+      } catch (e) {
+        console.error('HTTP sync error:', e);
+      }
+    }
+
+    function initWebSocket() {
+      const loc = window.location;
+      const wsUrl = (loc.protocol === 'https:' ? 'wss://' : 'ws://') + loc.host + '/ws/live';
+      
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (e) {
+        console.error(e);
+      }
+
+      const dot = document.getElementById('ws-status-dot');
+      const text = document.getElementById('ws-status-text');
+
+      ws.onopen = () => {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-500';
+        text.innerText = 'Canlı Takip Aktif (Sayfa Yenilemeye Gerek Yok)';
+        text.className = 'text-emerald-400 font-bold';
+        
+        if (pingInterval) clearInterval(pingInterval);
+        pingInterval = setInterval(() => {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send('ping');
+          }
+        }, 5000);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          if (event.data === 'pong') return;
+          const msg = JSON.parse(event.data);
+          
+          if (msg.event === 'init_snapshot') {
+            appState.activeSignals = msg.data.active_signals || [];
+            appState.recentSignals = msg.data.recent_signals || [];
+            renderActiveSignals();
+            renderRecentSignals();
+            fetchStats();
+          } else if (msg.event === 'new_signal') {
+            const sig = msg.data;
+            appState.activeSignals = appState.activeSignals.filter(s => s.symbol !== sig.symbol);
+            appState.activeSignals.unshift(sig);
+            appState.recentSignals.unshift(sig);
+            renderActiveSignals();
+            renderRecentSignals();
+            playAlertSound(sig.direction.toLowerCase());
+            showToast(`🔥 YENİ ${sig.direction} İŞLEMİ: ${sig.symbol}`, `Giriş: ${sig.entry} | SL: ${sig.stop} | TP1: ${sig.tp1}`, sig.direction === 'LONG');
+            fetchStats();
+          } else if (msg.event === 'partial_tp') {
+            const p = msg.data;
+            showToast(`💰 TP1 ALINDI: ${p.symbol}`, p.message, true);
+            fetchStats();
+          } else if (msg.event === 'signal_closed') {
+            appState.activeSignals = appState.activeSignals.filter(s => s.id !== msg.data.signal_id);
+            renderActiveSignals();
+            fetchHttpSnapshot();
+            fetchStats();
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      };
+
+      ws.onclose = () => {
+        dot.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
+        text.innerText = 'Yeniden Bağlanıyor...';
+        text.className = 'text-amber-400';
+        if (pingInterval) clearInterval(pingInterval);
+        fetchHttpSnapshot();
+        setTimeout(initWebSocket, 2000);
+      };
+    }
+
+    async function triggerScan() {
+      try {
+        await fetch('/api/scan-now', { method: 'POST' });
+        showToast('Tarama Tetiklendi', 'Piyasa anlık kontrol ediliyor.', true);
+        fetchHttpSnapshot();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function openSettingsModal() {
+      fetch('/api/config').then(r => r.json()).then(cfg => {
+        document.getElementById('cfg-tg-token').value = cfg.telegram_bot_token || '';
+        document.getElementById('cfg-tg-chat').value = cfg.telegram_chat_id || '';
+        document.getElementById('cfg-telegram-enabled').checked = !!cfg.telegram_enabled;
+        document.getElementById('cfg-tp-mode').value = cfg.tp_mode || 'PARTIAL_TRAIL';
+        document.getElementById('cfg-max-hold-bars').value = cfg.max_hold_bars || 48;
+        document.getElementById('settings-modal').classList.remove('hidden');
+      });
+    }
+
+    function closeSettingsModal() {
+      document.getElementById('settings-modal').classList.add('hidden');
+    }
+
+    async function saveSettings() {
+      const payload = {
+        telegram_bot_token: document.getElementById('cfg-tg-token').value.trim(),
+        telegram_chat_id: document.getElementById('cfg-tg-chat').value.trim(),
+        telegram_enabled: document.getElementById('cfg-telegram-enabled').checked,
+        tp_mode: document.getElementById('cfg-tp-mode').value,
+        max_hold_bars: parseInt(document.getElementById('cfg-max-hold-bars').value) || 48
+      };
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      closeSettingsModal();
+      showToast('Ayarlar Kaydedildi', 'Yapılandırma güncellendi.', true);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      fetchHttpSnapshot();
+      initWebSocket();
+      document.addEventListener('click', initAudio, { once: true });
+      // 3 saniyede bir otomatik canli veri akisi ve polling (sayfa yenileme ihtiyacini 0'a indirir)
+      setInterval(fetchHttpSnapshot, 3000);
+    });
+  </script>
+</body>
+</html>
