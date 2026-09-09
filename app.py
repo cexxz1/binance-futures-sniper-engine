@@ -1,8 +1,10 @@
 import os, json, sqlite3, datetime, urllib.request, threading, time
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # C:\Users\depco\OneDrive\Desktop\mtf_signal_engine\app.py
-# APEX ALL-IN PRODUCTION ENGINE (13 ELITE CHAMPIONS | 14x LEV | WIDE TRAIL | TURBO PYRAMID)
+# APEX 14x ALL-IN 24/7 PAPER MONITOR (13 ELITE COINS | REAL BINANCE KLINES | HTTP STATE EXPOSER)
 
+PORT = int(os.environ.get('PORT', 10000))
 DB_PATH = 'mtf_signals.sqlite'
 CHAMPIONS = [
     'ONTUSDT', 'AAVEUSDT', 'MOVRUSDT', 'VELVETUSDT', 'POLUSDT',
@@ -26,30 +28,29 @@ init_db()
 def get_klines(sym):
     url = f'https://fapi.binance.com/fapi/v1/klines?symbol={sym}&interval=1h&limit=120'
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    return json.loads(urllib.request.urlopen(req, timeout=5).read().decode())
+    return json.loads(urllib.request.urlopen(req, timeout=8).read().decode())
 
 def scan_and_update():
     conn = sqlite3.connect(DB_PATH, timeout=10)
     c = conn.cursor()
     c.execute('SELECT bal FROM state WHERE id=1')
-    bal = c.fetchone()[0]
+    bal_row = c.fetchone()
+    bal = bal_row[0] if bal_row else 100.0
 
     c.execute('SELECT sym, dir, entry, peak, sl, margin, lev, pyr FROM active')
     pos_row = c.fetchone()
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     hour, day = now_utc.hour, now_utc.strftime('%A')
 
-    # 1. Update active position (Wide 10% Trail + Turbo Pyramid)
     if pos_row:
         sym, direction, entry, peak, sl, margin, lev, pyr = pos_row
         try:
             k = get_klines(sym)[-1]
             p, h, l = float(k[4]), float(k[2]), float(k[3])
-            
+
             if direction == 'LONG':
                 new_peak = max(peak, h)
                 gain = (new_peak - entry) / entry
-                # Turbo Pyramid: +%3 -> +%35, +%6 -> +%35, +%12 -> +%50
                 init_m = margin / (1.0 + pyr * 0.35)
                 if pyr == 0 and gain >= 0.03:
                     margin += init_m * 0.35
@@ -62,7 +63,7 @@ def scan_and_update():
                     pyr = 3
 
                 if gain >= 0.05:
-                    sl = max(sl, new_peak * 0.90) # Wide 10% Peak Trail
+                    sl = max(sl, new_peak * 0.90)
 
                 exit_now, exit_p = False, p
                 if l <= sl: exit_now, exit_p = True, sl
@@ -97,7 +98,6 @@ def scan_and_update():
         except Exception:
             pass
 
-    # 2. Open new position (All-in Allocation: 90% Long / 30% Short)
     elif bal > 1.0 and hour not in {0, 2, 14, 19, 20} and not (day == 'Friday' and hour >= 18) and day != 'Saturday':
         for s in CHAMPIONS:
             try:
@@ -126,7 +126,6 @@ def scan_and_update():
                 short_ok = (pe9 >= pe21) and (e9 < e21) and (e9 < e99) and v_r >= 1.5 and not short_bad
 
                 if long_ok:
-                    # ponytail: 90% all-in margin for max compounding
                     margin = bal * 0.90
                     sl = p * 0.980
                     c.execute('INSERT INTO active VALUES (?, "LONG", ?, ?, ?, ?, 14, 0, ?)',
@@ -144,7 +143,46 @@ def scan_and_update():
     conn.commit()
     conn.close()
 
+def loop_worker():
+    while True:
+        try:
+            scan_and_update()
+        except Exception:
+            pass
+        time.sleep(30)
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute('SELECT bal FROM state WHERE id=1')
+        bal = c.fetchone()[0]
+        c.execute('SELECT sym, dir, entry, peak, sl, margin, lev, pyr, time FROM active')
+        act = c.fetchone()
+        c.execute('SELECT sym, dir, entry, exit, pnl, bal, time FROM history ORDER BY id DESC LIMIT 50')
+        hist = c.fetchall()
+        conn.close()
+
+        res = {
+            'status': 'ONLINE_24_7',
+            'engine': 'Apex All-In 14x',
+            'balance_usd': bal,
+            'active_position': act,
+            'recent_history': hist
+        }
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(res, indent=2).encode())
+
+    def log_message(self, format, *args):
+        pass
+
 if __name__ == '__main__':
-    # Self-check
+    # ponytail: naive threaded background worker with stdlib http server
     assert len(CHAMPIONS) == 13
-    print("Apex All-In Production Check: OK")
+    t = threading.Thread(target=loop_worker, daemon=True)
+    t.start()
+    server = HTTPServer(('0.0.0.0', PORT), Handler)
+    print(f"Apex Monitor listening on 0.0.0.0:{PORT}")
+    server.serve_forever()
