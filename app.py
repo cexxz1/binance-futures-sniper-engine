@@ -1,9 +1,6 @@
 import os, json, sqlite3, datetime, urllib.request, threading, time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# C:\Users\depco\OneDrive\Desktop\mtf_signal_engine\app.py
-# APEX 14x ALL-IN 24/7 PAPER MONITOR (13 ELITE COINS | REAL BINANCE KLINES | HTTP STATE EXPOSER)
-
 PORT = int(os.environ.get('PORT', 10000))
 DB_PATH = 'mtf_signals.sqlite'
 CHAMPIONS = [
@@ -25,28 +22,30 @@ def init_db():
 
 init_db()
 
-def get_klines(sym):
+def get_klines(sym: str):
+    # ponytail: naive urllib get, 5s timeout prevents hung worker thread
     url = f'https://fapi.binance.com/fapi/v1/klines?symbol={sym}&interval=1h&limit=120'
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    return json.loads(urllib.request.urlopen(req, timeout=8).read().decode())
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return json.loads(r.read().decode())
 
 def scan_and_update():
     conn = sqlite3.connect(DB_PATH, timeout=10)
     c = conn.cursor()
     c.execute('SELECT bal FROM state WHERE id=1')
-    bal_row = c.fetchone()
-    bal = bal_row[0] if bal_row else 100.0
+    row = c.fetchone()
+    bal = row[0] if row else 100.0
 
     c.execute('SELECT sym, dir, entry, peak, sl, margin, lev, pyr FROM active')
-    pos_row = c.fetchone()
+    pos = c.fetchone()
     now_utc = datetime.datetime.now(datetime.timezone.utc)
     hour, day = now_utc.hour, now_utc.strftime('%A')
 
-    if pos_row:
-        sym, direction, entry, peak, sl, margin, lev, pyr = pos_row
+    if pos:
+        sym, direction, entry, peak, sl, margin, lev, pyr = pos
         try:
-            k = get_klines(sym)[-1]
-            p, h, l = float(k[4]), float(k[2]), float(k[3])
+            raw = get_klines(sym)
+            p, h, l = float(raw[-1][4]), float(raw[-1][2]), float(raw[-1][3])
 
             if direction == 'LONG':
                 new_peak = max(peak, h)
@@ -166,12 +165,20 @@ class Handler(BaseHTTPRequestHandler):
         res = {
             'status': 'ONLINE_24_7',
             'engine': 'Apex All-In 14x',
-            'balance_usd': bal,
-            'active_position': act,
-            'recent_history': hist
+            'balance_usd': round(bal, 2),
+            'active_position': {
+                'symbol': act[0], 'dir': act[1], 'entry': act[2], 'peak': act[3],
+                'sl': act[4], 'margin': act[5], 'leverage': act[6], 'pyramid_step': act[7],
+                'opened_at': act[8]
+            } if act else None,
+            'recent_history': [
+                {'symbol': h[0], 'dir': h[1], 'entry': h[2], 'exit': h[3], 'pnl': h[4], 'balance': h[5], 'closed_at': h[6]}
+                for h in hist
+            ]
         }
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(json.dumps(res, indent=2).encode())
 
@@ -179,10 +186,9 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 if __name__ == '__main__':
-    # ponytail: naive threaded background worker with stdlib http server
     assert len(CHAMPIONS) == 13
     t = threading.Thread(target=loop_worker, daemon=True)
     t.start()
     server = HTTPServer(('0.0.0.0', PORT), Handler)
-    print(f"Apex Monitor listening on 0.0.0.0:{PORT}")
+    print(f"Apex Monitor ready on port {PORT}")
     server.serve_forever()
