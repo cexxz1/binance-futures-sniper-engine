@@ -13,10 +13,18 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('PRAGMA journal_mode=WAL')
-    c.execute('''CREATE TABLE IF NOT EXISTS state (id INT PRIMARY KEY, bal REAL, peak REAL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS state (id INT PRIMARY KEY, bal REAL, peak REAL, consec_loss INT DEFAULT 0, pause_until TEXT DEFAULT '')''')
+    c.execute('PRAGMA table_info(state)')
+    cols = [col[1] for col in c.fetchall()]
+    if 'consec_loss' not in cols:
+        c.execute('ALTER TABLE state ADD COLUMN consec_loss INT DEFAULT 0')
+    if 'pause_until' not in cols:
+        c.execute('ALTER TABLE state ADD COLUMN pause_until TEXT DEFAULT ""')
     c.execute('''CREATE TABLE IF NOT EXISTS active (sym TEXT PRIMARY KEY, dir TEXT, entry REAL, peak REAL, sl REAL, margin REAL, lev INT, pyr INT, time TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS history (id INTEGER PRIMARY KEY AUTOINCREMENT, sym TEXT, dir TEXT, entry REAL, exit REAL, pnl REAL, bal REAL, time TEXT)''')
-    c.execute('''INSERT OR IGNORE INTO state VALUES (1, 100.0, 100.0)''')
+    c.execute('SELECT count(*) FROM state WHERE id=1')
+    if c.fetchone()[0] == 0:
+        c.execute('INSERT INTO state (id, bal, peak, consec_loss, pause_until) VALUES (1, 100.0, 100.0, 0, "")')
     conn.commit()
     conn.close()
 
@@ -32,14 +40,18 @@ def get_klines(sym: str):
 def scan_and_update():
     conn = sqlite3.connect(DB_PATH, timeout=10)
     c = conn.cursor()
-    c.execute('SELECT bal FROM state WHERE id=1')
+    c.execute('SELECT bal, consec_loss, pause_until FROM state WHERE id=1')
     row = c.fetchone()
     bal = row[0] if row else 100.0
+    consec_loss = row[1] if row and row[1] is not None else 0
+    pause_until_str = row[2] if row and row[2] else ""
+
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_iso = now_utc.isoformat()
+    hour, day = now_utc.hour, now_utc.strftime('%A')
 
     c.execute('SELECT sym, dir, entry, peak, sl, margin, lev, pyr FROM active')
     pos = c.fetchone()
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
-    hour, day = now_utc.hour, now_utc.strftime('%A')
 
     if pos:
         sym, direction, entry, peak, sl, margin, lev, pyr = pos
@@ -88,21 +100,42 @@ def scan_and_update():
                 rg = (exit_p - entry)/entry if direction == 'LONG' else (entry - exit_p)/entry
                 pnl = margin * lev * (rg - 0.0013)
                 bal += pnl
+
+                if pnl < 0:
+                    consec_loss += 1
+                    if consec_loss >= 3:
+                        pause_dt = now_utc + datetime.timedelta(hours=24)
+                        pause_until_str = pause_dt.isoformat()
+                        consec_loss = 0
+                else:
+                    consec_loss = 0
+
                 c.execute('DELETE FROM active')
                 c.execute('INSERT INTO history (sym, dir, entry, exit, pnl, bal, time) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                          (sym, direction, entry, exit_p, pnl, bal, now_utc.isoformat()))
-                c.execute('UPDATE state SET bal=? WHERE id=1', (bal,))
+                          (sym, direction, entry, exit_p, pnl, bal, now_iso))
+                c.execute('UPDATE state SET bal=?, consec_loss=?, pause_until=? WHERE id=1', (bal, consec_loss, pause_until_str))
             else:
                 c.execute('UPDATE active SET peak=?, sl=?, margin=?, pyr=? WHERE sym=?', (new_peak, sl, margin, pyr, sym))
         except Exception:
             pass
 
-    elif bal > 1.0 and hour not in {0, 2, 14, 19, 20} and not (day == 'Friday' and hour >= 18) and day != 'Saturday':
+    is_paused = False
+    if pause_until_str:
+        try:
+            p_dt = datetime.datetime.fromisoformat(pause_until_str)
+            if now_utc < p_dt:
+                is_paused = True
+        except Exception:
+            pass
+
+    if not pos and bal > 1.0 and not is_paused and hour not in {0, 2, 14, 19, 20} and not (day == 'Friday' and hour >= 18) and day != 'Saturday':
         for s in CHAMPIONS:
             try:
                 raw = get_klines(s)
-                closes = [float(x[4]) for x in raw]
-                highs, lows, vols = [float(x[2]) for x in raw], [float(x[3]) for x in raw], [float(x[5]) for x in raw]
+                # ponytail: use closed candles (raw[:-1]) for signals to prevent fakeouts on open candle
+                closed = raw[:-1]
+                closes = [float(x[4]) for x in closed]
+                highs, lows, vols = [float(x[2]) for x in closed], [float(x[3]) for x in closed], [float(x[5]) for x in closed]
 
                 k9, k21, k99 = 2/10, 2/22, 2/100
                 e9, e21, e99 = closes[0], closes[0], closes[0]
@@ -113,7 +146,7 @@ def scan_and_update():
                     e21 = cl * k21 + e21 * (1 - k21)
                     e99 = cl * k99 + e99 * (1 - k99)
 
-                v_sma = sum(vols[-21:-1]) / 20.0
+                v_sma = sum(vols[-21:-1]) / 20.0 if len(vols) >= 21 else 1.0
                 v_r = vols[-1] / v_sma if v_sma > 0 else 1.0
                 p, o, h_bar, l_bar = closes[-1], closes[-2], highs[-1], lows[-1]
 
@@ -124,17 +157,18 @@ def scan_and_update():
                 long_ok = (pe9 <= pe21) and (e9 > e21) and (e9 > e99) and v_r >= 1.5 and not long_bad
                 short_ok = (pe9 >= pe21) and (e9 < e21) and (e9 < e99) and v_r >= 1.5 and not short_bad
 
+                curr_p = float(raw[-1][4]) # Current live price for entry
                 if long_ok:
                     margin = bal * 0.90
-                    sl = p * 0.980
+                    sl = curr_p * 0.980
                     c.execute('INSERT INTO active VALUES (?, "LONG", ?, ?, ?, ?, 14, 0, ?)',
-                              (s, p, p, sl, margin, now_utc.isoformat()))
+                              (s, curr_p, curr_p, sl, margin, now_iso))
                     break
                 elif short_ok and day not in ['Sunday', 'Thursday']:
                     margin = bal * 0.30
-                    sl = p * 1.020
+                    sl = curr_p * 1.020
                     c.execute('INSERT INTO active VALUES (?, "SHORT", ?, ?, ?, ?, 14, 0, ?)',
-                              (s, p, p, sl, margin, now_utc.isoformat()))
+                              (s, curr_p, curr_p, sl, margin, now_iso))
                     break
             except Exception:
                 pass
@@ -164,7 +198,7 @@ class Handler(BaseHTTPRequestHandler):
 
         res = {
             'status': 'ONLINE_24_7',
-            'engine': 'Apex All-In 14x',
+            'engine': 'Apex All-In 14x + Streak Guard',
             'balance_usd': round(bal, 2),
             'active_position': {
                 'symbol': act[0], 'dir': act[1], 'entry': act[2], 'peak': act[3],
