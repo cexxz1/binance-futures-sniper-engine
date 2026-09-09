@@ -186,6 +186,16 @@ def loop_worker():
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path == '/chart':
+            chart_path = os.path.join(os.path.dirname(__file__), 'chart.html')
+            with open(chart_path, 'rb') as f:
+                content = f.read()
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(content)
+            return
+
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute('SELECT bal FROM state WHERE id=1')

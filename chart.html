@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Apex MTF - TradingView Chart</title>
+  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    body { margin: 0; background: #131722; color: #d1d4dc; font-family: monospace; }
+    #header { padding: 10px 16px; display: flex; gap: 12px; align-items: center; background: #1e222d; }
+    select { background: #2a2e39; color: #fff; border: 1px solid #434651; padding: 4px 8px; border-radius: 4px; }
+    #chart { width: 100vw; height: calc(100vh - 50px); }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <strong>APEX 1H CHART:</strong>
+    <select id="sym">
+      <option value="VELVETUSDT">VELVETUSDT</option>
+      <option value="MOVRUSDT">MOVRUSDT</option>
+      <option value="AAVEUSDT">AAVEUSDT</option>
+      <option value="CAKEUSDT">CAKEUSDT</option>
+      <option value="INJUSDT">INJUSDT</option>
+      <option value="CRVUSDT">CRVUSDT</option>
+      <option value="ONTUSDT">ONTUSDT</option>
+      <option value="POLUSDT">POLUSDT</option>
+      <option value="ARBUSDT">ARBUSDT</option>
+      <option value="MORPHOUSDT">MORPHOUSDT</option>
+      <option value="ZECUSDT">ZECUSDT</option>
+      <option value="SEIUSDT">SEIUSDT</option>
+      <option value="ZROUSDT">ZROUSDT</option>
+    </select>
+  </div>
+  <div id="chart"></div>
+  <script>
+    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+      layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+      grid: { vertLines: { color: '#242732' }, horzLines: { color: '#242732' } },
+      timeScale: { timeVisible: true, secondsVisible: false }
+    });
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+      wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+    });
+
+    async function loadData(sym) {
+      const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=1h&limit=150`);
+      const raw = await res.json();
+      const candles = raw.map(k => ({
+        time: Math.floor(k[0] / 1000),
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4])
+      }));
+      candleSeries.setData(candles);
+      chart.timeScale().fitContent();
+    }
+
+    const select = document.getElementById('sym');
+    select.addEventListener('change', () => loadData(select.value));
+    loadData(select.value);
+    window.addEventListener('resize', () => chart.resize(window.innerWidth, window.innerHeight - 50));
+  </script>
+</body>
+</html>
