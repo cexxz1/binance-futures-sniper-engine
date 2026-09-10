@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Apex Sniper Engine | Live Terminal</title>
-  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     :root {
       --bg: #0b0e14;
@@ -139,49 +139,19 @@
   </div>
 
   <script>
-    // Clock
+    // Live Clock
     setInterval(() => {
       document.getElementById('liveClock').innerText = new Date().toUTCString().split(' ')[4] + ' UTC';
     }, 1000);
 
-    // Chart init
-    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-      layout: { background: { color: '#151922' }, textColor: '#7987a1' },
-      grid: { vertLines: { color: '#232936' }, horzLines: { color: '#232936' } },
-      timeScale: { timeVisible: true, secondsVisible: false }
-    });
-    const candleSeries = chart.addCandlestickSeries({
-      upColor: '#0ecb81', downColor: '#f6465d', borderVisible: false,
-      wickUpColor: '#0ecb81', wickDownColor: '#f6465d'
-    });
-
-    async function fetchChart(sym) {
-      try {
-        const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=1h&limit=120`);
-        const data = await res.json();
-        const candles = data.map(k => ({
-          time: Math.floor(k[0] / 1000),
-          open: parseFloat(k[1]),
-          high: parseFloat(k[2]),
-          low: parseFloat(k[3]),
-          close: parseFloat(k[4])
-        }));
-        candleSeries.setData(candles);
-        chart.timeScale().fitContent();
-      } catch(e) {}
-    }
-
-    const select = document.getElementById('symSelect');
-    select.addEventListener('change', () => fetchChart(select.value));
-    fetchChart(select.value);
-
-    // Live API Polling
+    // Live API Polling (isolated and resilient)
     async function syncBotData() {
       try {
         const res = await fetch('/api/data');
+        if (!res.ok) return;
         const d = await res.json();
         
-        document.getElementById('balanceDisplay').innerText = '$' + d.balance_usd.toFixed(2);
+        document.getElementById('balanceDisplay').innerText = '$' + Number(d.balance_usd).toFixed(2);
         
         if (d.active_position) {
           const p = d.active_position;
@@ -190,8 +160,8 @@
             <div class="pos-item"><span>Parite</span><span>${p.symbol}</span></div>
             <div class="pos-item"><span>Giriş Fiyatı</span><span>$${p.entry}</span></div>
             <div class="pos-item"><span>Zirve Fiyat</span><span>$${p.peak}</span></div>
-            <div class="pos-item"><span>Stop Loss</span><span style="color:var(--red)">$${p.sl.toFixed(4)}</span></div>
-            <div class="pos-item"><span>Kullanılan Marjin</span><span>$${p.margin.toFixed(2)}</span></div>
+            <div class="pos-item"><span>Stop Loss</span><span style="color:var(--red)">$${Number(p.sl).toFixed(4)}</span></div>
+            <div class="pos-item"><span>Kullanılan Marjin</span><span>$${Number(p.margin).toFixed(2)}</span></div>
             <div class="pos-item"><span>Piramit Kademesi</span><span>${p.pyramid_step}/3</span></div>
           `;
         } else {
@@ -206,18 +176,80 @@
               <td class="${h.dir === 'LONG' ? 'green' : 'red'}">${h.dir}</td>
               <td>$${h.entry}</td>
               <td>$${h.exit}</td>
-              <td class="${h.pnl >= 0 ? 'green' : 'red'}">${h.pnl >= 0 ? '+' : ''}$${h.pnl.toFixed(2)}</td>
-              <td>$${h.balance.toFixed(2)}</td>
+              <td class="${h.pnl >= 0 ? 'green' : 'red'}">${h.pnl >= 0 ? '+' : ''}$${Number(h.pnl).toFixed(2)}</td>
+              <td>$${Number(h.balance).toFixed(2)}</td>
               <td>${new Date(h.closed_at).toLocaleTimeString()}</td>
             </tr>
           `).join('');
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error("syncBotData error:", e);
+      }
     }
 
-    setInterval(syncBotData, 5000);
     syncBotData();
-    window.addEventListener('resize', () => chart.resize(document.getElementById('chart').clientWidth, 420));
+    setInterval(syncBotData, 5000);
+
+    // Chart init with robust multi-version fallback
+    let chart = null;
+    let candleSeries = null;
+
+    function initChart() {
+      try {
+        const chartEl = document.getElementById('chart');
+        if (!window.LightweightCharts || !chartEl) return;
+
+        chart = LightweightCharts.createChart(chartEl, {
+          layout: { background: { color: '#151922' }, textColor: '#7987a1' },
+          grid: { vertLines: { color: '#232936' }, horzLines: { color: '#232936' } },
+          timeScale: { timeVisible: true, secondsVisible: false }
+        });
+
+        if (typeof chart.addCandlestickSeries === 'function') {
+          candleSeries = chart.addCandlestickSeries({
+            upColor: '#0ecb81', downColor: '#f6465d', borderVisible: false,
+            wickUpColor: '#0ecb81', wickDownColor: '#f6465d'
+          });
+        } else if (typeof chart.addSeries === 'function' && LightweightCharts.CandlestickSeries) {
+          candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+            upColor: '#0ecb81', downColor: '#f6465d', borderVisible: false,
+            wickUpColor: '#0ecb81', wickDownColor: '#f6465d'
+          });
+        }
+      } catch (e) {
+        console.error("Chart init error:", e);
+      }
+    }
+
+    async function fetchChart(sym) {
+      if (!candleSeries || !chart) return;
+      try {
+        const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=1h&limit=120`);
+        const data = await res.json();
+        const candles = data.map(k => ({
+          time: Math.floor(k[0] / 1000),
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4])
+        }));
+        candleSeries.setData(candles);
+        chart.timeScale().fitContent();
+      } catch(e) {
+        console.error("Chart fetch error:", e);
+      }
+    }
+
+    initChart();
+    const select = document.getElementById('symSelect');
+    if (select) {
+      select.addEventListener('change', () => fetchChart(select.value));
+      fetchChart(select.value);
+    }
+
+    window.addEventListener('resize', () => {
+      if (chart) chart.resize(document.getElementById('chart').clientWidth, 420);
+    });
   </script>
 </body>
 </html>

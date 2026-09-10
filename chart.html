@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Apex MTF - TradingView Chart</title>
-  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     body { margin: 0; background: #131722; color: #d1d4dc; font-family: monospace; }
     #header { padding: 10px 16px; display: flex; gap: 12px; align-items: center; background: #1e222d; }
@@ -32,34 +32,54 @@
   </div>
   <div id="chart"></div>
   <script>
-    const chart = LightweightCharts.createChart(document.getElementById('chart'), {
-      layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
-      grid: { vertLines: { color: '#242732' }, horzLines: { color: '#242732' } },
-      timeScale: { timeVisible: true, secondsVisible: false }
-    });
-    const candleSeries = chart.addCandlestickSeries({
-      upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
-      wickUpColor: '#26a69a', wickDownColor: '#ef5350'
-    });
+    let chart = null;
+    let candleSeries = null;
+    try {
+      chart = LightweightCharts.createChart(document.getElementById('chart'), {
+        layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+        grid: { vertLines: { color: '#242732' }, horzLines: { color: '#242732' } },
+        timeScale: { timeVisible: true, secondsVisible: false }
+      });
+      if (typeof chart.addCandlestickSeries === 'function') {
+        candleSeries = chart.addCandlestickSeries({
+          upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+          wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+        });
+      } else if (typeof chart.addSeries === 'function' && LightweightCharts.CandlestickSeries) {
+        candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+          upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+          wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+        });
+      }
+    } catch(e) {
+      console.error(e);
+    }
 
     async function loadData(sym) {
-      const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=1h&limit=150`);
-      const raw = await res.json();
-      const candles = raw.map(k => ({
-        time: Math.floor(k[0] / 1000),
-        open: parseFloat(k[1]),
-        high: parseFloat(k[2]),
-        low: parseFloat(k[3]),
-        close: parseFloat(k[4])
-      }));
-      candleSeries.setData(candles);
-      chart.timeScale().fitContent();
+      if (!candleSeries || !chart) return;
+      try {
+        const res = await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${sym}&interval=1h&limit=150`);
+        const raw = await res.json();
+        const candles = raw.map(k => ({
+          time: Math.floor(k[0] / 1000),
+          open: parseFloat(k[1]),
+          high: parseFloat(k[2]),
+          low: parseFloat(k[3]),
+          close: parseFloat(k[4])
+        }));
+        candleSeries.setData(candles);
+        chart.timeScale().fitContent();
+      } catch(e) {
+        console.error(e);
+      }
     }
 
     const select = document.getElementById('sym');
     select.addEventListener('change', () => loadData(select.value));
     loadData(select.value);
-    window.addEventListener('resize', () => chart.resize(window.innerWidth, window.innerHeight - 50));
+    window.addEventListener('resize', () => {
+      if (chart) chart.resize(window.innerWidth, window.innerHeight - 50);
+    });
   </script>
 </body>
 </html>
