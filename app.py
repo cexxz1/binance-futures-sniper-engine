@@ -52,8 +52,8 @@ def get_slot_count(bal: float) -> int:
     return 6
 
 def get_current_leverage(month: int) -> int:
-    # ponytail: Q1 tax season (March/April) uses 12x shield, rest of year uses 16x
-    return 12 if month in [3, 4] else 16
+    # ponytail: Q1 tax season (March/April) uses 12x shield, rest of year uses 18x turbo
+    return 12 if month in [3, 4] else 18
 
 def scan_and_update():
     conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -84,16 +84,16 @@ def scan_and_update():
             if direction == 'LONG':
                 new_peak = max(peak, h)
                 gain = (new_peak - entry) / entry
-                init_m = margin / (1.0 + (pyr == 1) * 0.50 + (pyr == 2) * 1.00 + (pyr == 3) * 1.80)
+                init_m = margin / (1.0 + (pyr == 1) * 0.60 + (pyr == 2) * 1.20 + (pyr == 3) * 2.20)
                 if pyr == 0 and gain >= 0.03:
-                    add = min(init_m * 0.50, max_liquid_margin - margin)
-                    if add > 0: margin += add; pyr = 1
+                    add = init_m * 0.60
+                    if bal >= add: margin = min(margin + add, max_allowed_margin); pyr = 1
                 elif pyr == 1 and gain >= 0.06:
-                    add = min(init_m * 0.50, max_liquid_margin - margin)
-                    if add > 0: margin += add; pyr = 2
+                    add = init_m * 0.60
+                    if bal >= add: margin = min(margin + add, max_allowed_margin); pyr = 2
                 elif pyr == 2 and gain >= 0.12:
-                    add = min(init_m * 0.80, max_liquid_margin - margin)
-                    if add > 0: margin += add; pyr = 3
+                    add = init_m * 1.00
+                    if bal >= add: margin = min(margin + add, max_allowed_margin); pyr = 3
 
                 if gain >= 0.05:
                     sl = max(sl, new_peak * 0.92) # %8 Peak Trailing Stop
