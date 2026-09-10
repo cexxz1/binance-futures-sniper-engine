@@ -52,8 +52,8 @@ def get_slot_count(bal: float) -> int:
     return 6
 
 def get_current_leverage(month: int) -> int:
-    # ponytail: Q1 tax season (March/April) uses 12x shield, rest of year uses 20x peak
-    return 12 if month in [3, 4] else 20
+    # ponytail: Q1 tax season (March/April) and Rektember (September) use 12x shield, rest of year uses 20x peak
+    return 12 if month in [3, 4, 9] else 20
 
 def scan_and_update():
     conn = sqlite3.connect(DB_PATH, timeout=10)
