@@ -93,7 +93,7 @@ def scan_and_update():
                     if add > 0: margin += add; pyr = 3
 
                 if gain >= 0.05:
-                    sl = max(sl, new_peak * 0.93) # %7 Peak Trailing Stop
+                    sl = max(sl, new_peak * 0.92) # %8 Peak Trailing Stop
 
                 exit_now, exit_p = False, p
                 if l <= sl: exit_now, exit_p = True, sl
@@ -110,7 +110,7 @@ def scan_and_update():
                     if add > 0: margin += add; pyr = 2
 
                 if gain >= 0.05:
-                    sl = min(sl, new_peak * 1.07) # %7 Peak Trailing Stop
+                    sl = min(sl, new_peak * 1.08) # %8 Peak Trailing Stop
 
                 exit_now, exit_p = False, p
                 if h >= sl: exit_now, exit_p = True, sl
@@ -194,14 +194,14 @@ def scan_and_update():
                 if long_ok:
                     margin = min(slot_capital * 0.90, max_allowed_margin)
                     sl = curr_p * 0.980
-                    c.execute('INSERT INTO active VALUES (?, "LONG", ?, ?, ?, ?, 14, 0, ?)',
+                    c.execute('INSERT INTO active VALUES (?, "LONG", ?, ?, ?, ?, 16, 0, ?)',
                               (s, curr_p, curr_p, sl, margin, now_iso))
                     cur_actives.append(s)
                     if len(cur_actives) >= num_slots: break
                 elif short_ok and day not in ['Sunday', 'Thursday']:
                     margin = min(slot_capital * 0.30, max_allowed_margin)
                     sl = curr_p * 1.020
-                    c.execute('INSERT INTO active VALUES (?, "SHORT", ?, ?, ?, ?, 14, 0, ?)',
+                    c.execute('INSERT INTO active VALUES (?, "SHORT", ?, ?, ?, ?, 16, 0, ?)',
                               (s, curr_p, curr_p, sl, margin, now_iso))
                     cur_actives.append(s)
                     if len(cur_actives) >= num_slots: break
