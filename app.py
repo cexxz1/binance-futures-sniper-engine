@@ -52,8 +52,8 @@ def get_slot_count(bal: float) -> int:
     return 6
 
 def get_current_leverage(month: int) -> int:
-    # ponytail: Q1 tax season (March/April) uses 12x shield, rest of year uses 18x turbo
-    return 12 if month in [3, 4] else 18
+    # ponytail: Q1 tax season (March/April) uses 12x shield, rest of year uses 20x peak
+    return 12 if month in [3, 4] else 20
 
 def scan_and_update():
     conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -84,15 +84,15 @@ def scan_and_update():
             if direction == 'LONG':
                 new_peak = max(peak, h)
                 gain = (new_peak - entry) / entry
-                init_m = margin / (1.0 + (pyr == 1) * 0.60 + (pyr == 2) * 1.20 + (pyr == 3) * 2.20)
+                init_m = margin / (1.0 + (pyr == 1) * 0.70 + (pyr == 2) * 1.40 + (pyr == 3) * 2.60)
                 if pyr == 0 and gain >= 0.03:
-                    add = init_m * 0.60
+                    add = init_m * 0.70
                     if bal >= add: margin = min(margin + add, max_allowed_margin); pyr = 1
                 elif pyr == 1 and gain >= 0.06:
-                    add = init_m * 0.60
+                    add = init_m * 0.70
                     if bal >= add: margin = min(margin + add, max_allowed_margin); pyr = 2
                 elif pyr == 2 and gain >= 0.12:
-                    add = init_m * 1.00
+                    add = init_m * 1.20
                     if bal >= add: margin = min(margin + add, max_allowed_margin); pyr = 3
 
                 if gain >= 0.05:
