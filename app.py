@@ -62,19 +62,19 @@ def scan_and_update():
             if direction == 'LONG':
                 new_peak = max(peak, h)
                 gain = (new_peak - entry) / entry
-                init_m = margin / (1.0 + pyr * 0.35)
+                init_m = margin / (1.0 + (pyr == 1) * 0.50 + (pyr == 2) * 1.00 + (pyr == 3) * 1.80)
                 if pyr == 0 and gain >= 0.03:
-                    margin += init_m * 0.35
+                    margin += init_m * 0.50
                     pyr = 1
                 elif pyr == 1 and gain >= 0.06:
-                    margin += init_m * 0.35
+                    margin += init_m * 0.50
                     pyr = 2
                 elif pyr == 2 and gain >= 0.12:
-                    margin += init_m * 0.50
+                    margin += init_m * 0.80
                     pyr = 3
 
                 if gain >= 0.05:
-                    sl = max(sl, new_peak * 0.90)
+                    sl = max(sl, new_peak * 0.93) # %7 Zirve Takip
 
                 exit_now, exit_p = False, p
                 if l <= sl: exit_now, exit_p = True, sl
@@ -82,16 +82,16 @@ def scan_and_update():
             elif direction == 'SHORT':
                 new_peak = min(peak, l)
                 gain = (entry - new_peak) / entry
-                init_m = margin / (1.0 + pyr * 0.35)
+                init_m = margin / (1.0 + (pyr == 1) * 0.50 + (pyr == 2) * 1.00 + (pyr == 3) * 1.80)
                 if pyr == 0 and gain >= 0.03:
-                    margin += init_m * 0.35
+                    margin += init_m * 0.50
                     pyr = 1
                 elif pyr == 1 and gain >= 0.06:
-                    margin += init_m * 0.35
+                    margin += init_m * 0.50
                     pyr = 2
 
                 if gain >= 0.05:
-                    sl = min(sl, new_peak * 1.10)
+                    sl = min(sl, new_peak * 1.07) # %7 Zirve Takip
 
                 exit_now, exit_p = False, p
                 if h >= sl: exit_now, exit_p = True, sl
