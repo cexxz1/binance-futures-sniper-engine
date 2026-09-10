@@ -44,6 +44,14 @@ def get_klines(sym: str):
     with urllib.request.urlopen(req, timeout=5) as r:
         return json.loads(r.read().decode())
 
+def get_slot_count(bal: float) -> int:
+    # ponytail: step-wise dynamic slot tiering
+    if bal < 1000.0: return 1
+    if bal < 10000.0: return 2
+    if bal < 50000.0: return 4
+    if bal < 250000.0: return 6
+    return 8
+
 def scan_and_update():
     conn = sqlite3.connect(DB_PATH, timeout=10)
     c = conn.cursor()
@@ -58,7 +66,7 @@ def scan_and_update():
     now_iso = now_utc.isoformat()
     hour, day = now_utc.hour, now_utc.strftime('%A')
 
-    # 1. Update all open positions
+    # 1. Update active positions
     c.execute('SELECT sym, dir, entry, peak, sl, margin, lev, pyr FROM active')
     open_positions = c.fetchall()
 
@@ -68,7 +76,7 @@ def scan_and_update():
             raw = get_klines(sym)
             p, h, l, vol = float(raw[-1][4]), float(raw[-1][2]), float(raw[-1][3]), float(raw[-1][5])
             bar_vol_usd = vol * p
-            max_liquid_margin = max(500.0, (bar_vol_usd * 0.02) / 14.0)
+            max_liquid_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / 14.0))
 
             if direction == 'LONG':
                 new_peak = max(peak, h)
@@ -109,7 +117,7 @@ def scan_and_update():
 
             if exit_now:
                 rg = (exit_p - entry)/entry if direction == 'LONG' else (entry - exit_p)/entry
-                pnl = margin * lev * (rg - 0.0016) # Fee %0.10 + Slippage %0.06
+                pnl = margin * lev * (rg - 0.0016)
                 bal += pnl
 
                 if pnl > 0:
@@ -143,18 +151,16 @@ def scan_and_update():
         except Exception:
             pass
 
-    # 3. Open new positions (Slot logic: 1000$ split threshold, Max 2 Concurrent)
-    max_slots = 2 if bal >= 1000.0 else 1
-    c.execute('SELECT count(*), sym FROM active')
-    cur_actives = c.fetchall()
-    cur_count = len(cur_actives) if cur_actives and cur_actives[0][1] else 0
+    # 3. Open new positions with dynamic slots
+    num_slots = get_slot_count(bal)
+    c.execute('SELECT sym FROM active')
+    cur_actives = [r[0] for r in c.fetchall()]
 
-    if cur_count < max_slots and bal > 1.0 and not is_paused and hour not in {0, 2, 14, 19, 20} and not (day == 'Friday' and hour >= 18) and day != 'Saturday':
-        active_syms = {row[1] for row in cur_actives if row[1]}
-        slot_capital = bal / max_slots
+    if len(cur_actives) < num_slots and bal > 1.0 and not is_paused and hour not in {0, 2, 14, 19, 20} and not (day == 'Friday' and hour >= 18) and day != 'Saturday':
+        slot_capital = bal / num_slots
 
         for s in CHAMPIONS:
-            if s in active_syms: continue
+            if s in cur_actives: continue
             try:
                 raw = get_klines(s)
                 closed = raw[:-1]
@@ -183,20 +189,22 @@ def scan_and_update():
 
                 curr_p = float(raw[-1][4])
                 bar_vol_usd = float(raw[-1][5]) * curr_p
-                max_allowed_margin = max(500.0, (bar_vol_usd * 0.02) / 14.0)
+                max_allowed_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / 14.0))
 
                 if long_ok:
                     margin = min(slot_capital * 0.90, max_allowed_margin)
                     sl = curr_p * 0.980
                     c.execute('INSERT INTO active VALUES (?, "LONG", ?, ?, ?, ?, 14, 0, ?)',
                               (s, curr_p, curr_p, sl, margin, now_iso))
-                    break
+                    cur_actives.append(s)
+                    if len(cur_actives) >= num_slots: break
                 elif short_ok and day not in ['Sunday', 'Thursday']:
                     margin = min(slot_capital * 0.30, max_allowed_margin)
                     sl = curr_p * 1.020
                     c.execute('INSERT INTO active VALUES (?, "SHORT", ?, ?, ?, ?, 14, 0, ?)',
                               (s, curr_p, curr_p, sl, margin, now_iso))
-                    break
+                    cur_actives.append(s)
+                    if len(cur_actives) >= num_slots: break
             except Exception:
                 pass
 
@@ -247,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
 
         res = {
             'status': 'ONLINE_24_7',
-            'engine': 'Apex Real-Quant 14x (Harvest + Liquidity Guard)',
+            'engine': 'Apex Real-Quant 14x (Dynamic Multi-Slot + Vault)',
             'balance_usd': round(bal, 2),
             'vault_usd': round(vault, 2),
             'total_net_worth_usd': round(bal + vault, 2),
