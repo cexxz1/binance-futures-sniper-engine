@@ -79,7 +79,7 @@ def scan_and_update():
             raw = get_klines(sym)
             p, h, l, vol = float(raw[-1][4]), float(raw[-1][2]), float(raw[-1][3]), float(raw[-1][5])
             bar_vol_usd = vol * p
-            max_liquid_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / 14.0))
+            max_liquid_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / float(lev)))
 
             if direction == 'LONG':
                 new_peak = max(peak, h)
@@ -87,13 +87,13 @@ def scan_and_update():
                 init_m = margin / (1.0 + (pyr == 1) * 0.70 + (pyr == 2) * 1.40 + (pyr == 3) * 2.60)
                 if pyr == 0 and gain >= 0.03:
                     add = init_m * 0.70
-                    if bal >= add: margin = min(margin + add, max_allowed_margin); pyr = 1
+                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 1
                 elif pyr == 1 and gain >= 0.06:
                     add = init_m * 0.70
-                    if bal >= add: margin = min(margin + add, max_allowed_margin); pyr = 2
+                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 2
                 elif pyr == 2 and gain >= 0.12:
                     add = init_m * 1.20
-                    if bal >= add: margin = min(margin + add, max_allowed_margin); pyr = 3
+                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 3
 
                 if gain >= 0.05:
                     sl = max(sl, new_peak * 0.92) # %8 Peak Trailing Stop
@@ -192,9 +192,9 @@ def scan_and_update():
 
                 curr_p = float(raw[-1][4])
                 bar_vol_usd = float(raw[-1][5]) * curr_p
-                max_allowed_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / 14.0))
-
                 active_lev = get_current_leverage(now_utc.month)
+                max_allowed_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / float(active_lev)))
+
                 if long_ok:
                     margin = min(slot_capital * 0.90, max_allowed_margin)
                     sl = curr_p * 0.980
@@ -259,7 +259,7 @@ class Handler(BaseHTTPRequestHandler):
 
         res = {
             'status': 'ONLINE_24_7',
-            'engine': 'Apex Real-Quant 14x (Dynamic Multi-Slot + Vault)',
+            'engine': 'Apex Ultimate Quant 20x (Dynamic Multi-Slot + Seasonality + Vault)',
             'balance_usd': round(bal, 2),
             'vault_usd': round(vault, 2),
             'total_net_worth_usd': round(bal + vault, 2),
