@@ -45,12 +45,15 @@ def get_klines(sym: str):
         return json.loads(r.read().decode())
 
 def get_slot_count(bal: float) -> int:
-    # ponytail: step-wise dynamic slot tiering
-    if bal < 1000.0: return 1
-    if bal < 10000.0: return 2
-    if bal < 50000.0: return 4
-    if bal < 250000.0: return 6
-    return 8
+    # ponytail: 3k$ threshold lets compounding ignite, scales up to 6 slots
+    if bal < 3000.0: return 1
+    if bal < 25000.0: return 2
+    if bal < 100000.0: return 4
+    return 6
+
+def get_current_leverage(month: int) -> int:
+    # ponytail: Q1 tax season (March/April) uses 12x shield, rest of year uses 16x
+    return 12 if month in [3, 4] else 16
 
 def scan_and_update():
     conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -191,18 +194,19 @@ def scan_and_update():
                 bar_vol_usd = float(raw[-1][5]) * curr_p
                 max_allowed_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / 14.0))
 
+                active_lev = get_current_leverage(now_utc.month)
                 if long_ok:
                     margin = min(slot_capital * 0.90, max_allowed_margin)
                     sl = curr_p * 0.980
-                    c.execute('INSERT INTO active VALUES (?, "LONG", ?, ?, ?, ?, 16, 0, ?)',
-                              (s, curr_p, curr_p, sl, margin, now_iso))
+                    c.execute('INSERT INTO active VALUES (?, "LONG", ?, ?, ?, ?, ?, 0, ?)',
+                              (s, curr_p, curr_p, sl, margin, active_lev, now_iso))
                     cur_actives.append(s)
                     if len(cur_actives) >= num_slots: break
                 elif short_ok and day not in ['Sunday', 'Thursday']:
                     margin = min(slot_capital * 0.30, max_allowed_margin)
                     sl = curr_p * 1.020
-                    c.execute('INSERT INTO active VALUES (?, "SHORT", ?, ?, ?, ?, 16, 0, ?)',
-                              (s, curr_p, curr_p, sl, margin, now_iso))
+                    c.execute('INSERT INTO active VALUES (?, "SHORT", ?, ?, ?, ?, ?, 0, ?)',
+                              (s, curr_p, curr_p, sl, margin, active_lev, now_iso))
                     cur_actives.append(s)
                     if len(cur_actives) >= num_slots: break
             except Exception:
