@@ -81,13 +81,14 @@ def scan_and_update():
             bar_vol_usd = vol * p
             max_liquid_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / float(lev)))
 
+            # Ağırlıklı piramitleme ve kilitli pozitif breakeven kalkanı
             if direction == 'LONG':
                 new_peak = max(peak, h)
                 gain = (new_peak - entry) / entry
                 init_m = margin / (1.0 + (pyr == 1) * 0.70 + (pyr == 2) * 1.40 + (pyr == 3) * 2.60)
                 if pyr == 0 and gain >= 0.03:
                     add = init_m * 0.70
-                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 1; sl = max(sl, entry * 1.005)
+                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 1; sl = max(sl, entry * 1.015)
                 elif pyr == 1 and gain >= 0.06:
                     add = init_m * 0.70
                     if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 2; sl = max(sl, entry * 1.030)
@@ -107,7 +108,7 @@ def scan_and_update():
                 init_m = margin / (1.0 + (pyr == 1) * 0.70 + (pyr == 2) * 1.40 + (pyr == 3) * 2.60)
                 if pyr == 0 and gain >= 0.03:
                     add = min(init_m * 0.70, max_liquid_margin - margin)
-                    if add > 0: margin += add; pyr = 1; sl = min(sl, entry * 0.995)
+                    if add > 0: margin += add; pyr = 1; sl = min(sl, entry * 0.985)
                 elif pyr == 1 and gain >= 0.06:
                     add = min(init_m * 0.70, max_liquid_margin - margin)
                     if add > 0: margin += add; pyr = 2; sl = min(sl, entry * 0.970)
