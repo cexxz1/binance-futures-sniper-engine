@@ -87,13 +87,13 @@ def scan_and_update():
                 init_m = margin / (1.0 + (pyr == 1) * 0.70 + (pyr == 2) * 1.40 + (pyr == 3) * 2.60)
                 if pyr == 0 and gain >= 0.03:
                     add = init_m * 0.70
-                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 1
+                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 1; sl = max(sl, entry * 1.005)
                 elif pyr == 1 and gain >= 0.06:
                     add = init_m * 0.70
-                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 2
+                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 2; sl = max(sl, entry * 1.030)
                 elif pyr == 2 and gain >= 0.12:
                     add = init_m * 1.20
-                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 3
+                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 3; sl = max(sl, entry * 1.080)
 
                 if gain >= 0.05:
                     sl = max(sl, new_peak * 0.92) # %8 Peak Trailing Stop
@@ -104,13 +104,13 @@ def scan_and_update():
             elif direction == 'SHORT':
                 new_peak = min(peak, l)
                 gain = (entry - new_peak) / entry
-                init_m = margin / (1.0 + (pyr == 1) * 0.50 + (pyr == 2) * 1.00 + (pyr == 3) * 1.80)
+                init_m = margin / (1.0 + (pyr == 1) * 0.70 + (pyr == 2) * 1.40 + (pyr == 3) * 2.60)
                 if pyr == 0 and gain >= 0.03:
-                    add = min(init_m * 0.50, max_liquid_margin - margin)
-                    if add > 0: margin += add; pyr = 1
+                    add = min(init_m * 0.70, max_liquid_margin - margin)
+                    if add > 0: margin += add; pyr = 1; sl = min(sl, entry * 0.995)
                 elif pyr == 1 and gain >= 0.06:
-                    add = min(init_m * 0.50, max_liquid_margin - margin)
-                    if add > 0: margin += add; pyr = 2
+                    add = min(init_m * 0.70, max_liquid_margin - margin)
+                    if add > 0: margin += add; pyr = 2; sl = min(sl, entry * 0.970)
 
                 if gain >= 0.05:
                     sl = min(sl, new_peak * 1.08) # %8 Peak Trailing Stop
