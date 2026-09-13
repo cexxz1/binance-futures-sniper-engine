@@ -45,8 +45,8 @@ def get_klines(sym: str):
         return json.loads(r.read().decode())
 
 def get_slot_count(bal: float) -> int:
-    # ponytail: 3k$ threshold lets compounding ignite, scales up to 6 slots
-    if bal < 3000.0: return 1
+    # ponytail: $5k threshold lets early compounding ignite, scales up to 6 slots
+    if bal < 5000.0: return 1
     if bal < 25000.0: return 2
     if bal < 100000.0: return 4
     return 6
@@ -85,19 +85,19 @@ def scan_and_update():
             if direction == 'LONG':
                 new_peak = max(peak, h)
                 gain = (new_peak - entry) / entry
-                init_m = margin / (1.0 + (pyr == 1) * 0.70 + (pyr == 2) * 1.40 + (pyr == 3) * 2.60)
+                init_m = margin / (1.0 + (pyr == 1) * 0.80 + (pyr == 2) * 1.60 + (pyr == 3) * 3.00)
                 if pyr == 0 and gain >= 0.03:
-                    add = init_m * 0.70
+                    add = init_m * 0.80
                     if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 1; sl = max(sl, entry * 1.015)
                 elif pyr == 1 and gain >= 0.06:
-                    add = init_m * 0.70
+                    add = init_m * 0.80
                     if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 2; sl = max(sl, entry * 1.030)
                 elif pyr == 2 and gain >= 0.12:
-                    add = init_m * 1.20
+                    add = init_m * 1.40
                     if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 3; sl = max(sl, entry * 1.080)
 
                 if gain >= 0.05:
-                    sl = max(sl, new_peak * 0.92) # %8 Peak Trailing Stop
+                    sl = max(sl, new_peak * 0.93) # %7 Peak Trailing Stop
 
                 exit_now, exit_p = False, p
                 if l <= sl: exit_now, exit_p = True, sl
@@ -105,16 +105,16 @@ def scan_and_update():
             elif direction == 'SHORT':
                 new_peak = min(peak, l)
                 gain = (entry - new_peak) / entry
-                init_m = margin / (1.0 + (pyr == 1) * 0.70 + (pyr == 2) * 1.40 + (pyr == 3) * 2.60)
+                init_m = margin / (1.0 + (pyr == 1) * 0.80 + (pyr == 2) * 1.60 + (pyr == 3) * 3.00)
                 if pyr == 0 and gain >= 0.03:
-                    add = min(init_m * 0.70, max_liquid_margin - margin)
+                    add = min(init_m * 0.80, max_liquid_margin - margin)
                     if add > 0: margin += add; pyr = 1; sl = min(sl, entry * 0.985)
                 elif pyr == 1 and gain >= 0.06:
-                    add = min(init_m * 0.70, max_liquid_margin - margin)
+                    add = min(init_m * 0.80, max_liquid_margin - margin)
                     if add > 0: margin += add; pyr = 2; sl = min(sl, entry * 0.970)
 
                 if gain >= 0.05:
-                    sl = min(sl, new_peak * 1.08) # %8 Peak Trailing Stop
+                    sl = min(sl, new_peak * 1.07) # %7 Peak Trailing Stop
 
                 exit_now, exit_p = False, p
                 if h >= sl: exit_now, exit_p = True, sl
