@@ -203,16 +203,14 @@ def scan_and_update():
 
                 if long_ok:
                     margin = calc_m
-                    # Structure-Aware Dynamic SL: Lock behind EMA21 support, clamped between -1% and -3%
-                    sl = max(real_entry_p * 0.970, min(real_entry_p * 0.990, pe21 * 0.998))
+                    sl = real_entry_p * 0.980
                     c.execute('INSERT INTO active VALUES (?, "LONG", ?, ?, ?, ?, ?, 0, ?)',
                               (s, real_entry_p, real_entry_p, sl, margin, active_lev, now_iso))
                     cur_actives.append(s)
                     if len(cur_actives) >= num_slots: break
                 elif short_ok and day not in ['Sunday', 'Thursday']:
                     margin = calc_m
-                    # Structure-Aware Dynamic SL: Lock behind EMA21 resistance, clamped between +1% and +3%
-                    sl = min(real_entry_p * 1.030, max(real_entry_p * 1.010, pe21 * 1.002))
+                    sl = real_entry_p * 1.020
                     c.execute('INSERT INTO active VALUES (?, "SHORT", ?, ?, ?, ?, ?, 0, ?)',
                               (s, real_entry_p, real_entry_p, sl, margin, active_lev, now_iso))
                     cur_actives.append(s)
