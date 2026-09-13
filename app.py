@@ -195,18 +195,22 @@ def scan_and_update():
                 active_lev = get_current_leverage(now_utc.month)
                 max_allowed_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / float(active_lev)))
 
+                # Apply realistic taker entry slippage (0.04% - 0.08% based on size/liquidity)
+                entry_slip = 0.0006 + (0.005 * math.sqrt(margin / max(bar_vol_usd, 1.0)) if bar_vol_usd > 0 else 0.0)
+                real_entry_p = curr_p * (1.0 + entry_slip) if long_ok else curr_p * (1.0 - entry_slip)
+
                 if long_ok:
                     margin = min(slot_capital * 0.90, max_allowed_margin)
-                    sl = curr_p * 0.980
+                    sl = real_entry_p * 0.980
                     c.execute('INSERT INTO active VALUES (?, "LONG", ?, ?, ?, ?, ?, 0, ?)',
-                              (s, curr_p, curr_p, sl, margin, active_lev, now_iso))
+                              (s, real_entry_p, real_entry_p, sl, margin, active_lev, now_iso))
                     cur_actives.append(s)
                     if len(cur_actives) >= num_slots: break
                 elif short_ok and day not in ['Sunday', 'Thursday']:
                     margin = min(slot_capital * 0.30, max_allowed_margin)
-                    sl = curr_p * 1.020
+                    sl = real_entry_p * 1.020
                     c.execute('INSERT INTO active VALUES (?, "SHORT", ?, ?, ?, ?, ?, 0, ?)',
-                              (s, curr_p, curr_p, sl, margin, active_lev, now_iso))
+                              (s, real_entry_p, real_entry_p, sl, margin, active_lev, now_iso))
                     cur_actives.append(s)
                     if len(cur_actives) >= num_slots: break
             except Exception:
