@@ -275,7 +275,7 @@ class Handler(BaseHTTPRequestHandler):
 
         res = {
             'status': 'ONLINE_24_7',
-            'engine': 'Apex Ultimate Quant 22x (Dynamic Multi-Slot + Seasonality + Vault)',
+            'engine': 'Apex Ultimate Quant 25x (EMA 7/18/85 + Seasonality + Vault)',
             'balance_usd': round(bal, 2),
             'vault_usd': round(vault, 2),
             'total_net_worth_usd': round(bal + vault, 2),
