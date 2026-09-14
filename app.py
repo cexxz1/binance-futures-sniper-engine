@@ -188,8 +188,8 @@ def scan_and_update():
                 long_bad = (h_bar - max(p, o)) > (body * 1.8) if body > 0 else False
                 short_bad = (min(p, o) - l_bar) > (body * 1.8) if body > 0 else False
 
-                long_ok = (pe9 <= pe21) and (e9 > e21) and (e9 > e99) and v_r >= 1.8 and not long_bad
-                short_ok = (pe9 >= pe21) and (e9 < e21) and (e9 < e99) and v_r >= 1.8 and not short_bad
+                long_ok = (pe9 <= pe21) and (e9 > e21) and (e9 > e99) and v_r >= 2.0 and not long_bad
+                short_ok = (pe9 >= pe21) and (e9 < e21) and (e9 < e99) and v_r >= 2.0 and not short_bad
 
                 curr_p = float(raw[-1][4])
                 bar_vol_usd = float(raw[-1][5]) * curr_p
