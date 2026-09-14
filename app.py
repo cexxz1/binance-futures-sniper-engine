@@ -45,15 +45,12 @@ def get_klines(sym: str):
         return json.loads(r.read().decode())
 
 def get_slot_count(bal: float) -> int:
-    # ponytail: $5k threshold lets early compounding ignite, scales up to 6 slots
-    if bal < 5000.0: return 1
-    if bal < 25000.0: return 2
-    if bal < 100000.0: return 4
-    return 6
+    # ponytail: pure single-slot hyper-compounding maximizes exponential growth
+    return 1
 
 def get_current_leverage(month: int) -> int:
-    # ponytail: Q1 tax season (March/April) and Rektember (September) use 12x shield, rest of year uses 24x turbo
-    return 12 if month in [3, 4, 9] else 24
+    # ponytail: Q1 (March/April), Summer (June/July) and Rektember (Sept) use 12x shield, rallies use 25x peak
+    return 12 if month in [3, 4, 6, 7, 9] else 25
 
 def scan_and_update():
     conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -197,7 +194,7 @@ def scan_and_update():
                 max_allowed_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / float(active_lev)))
 
                 # Apply realistic taker entry slippage (0.04% - 0.08% based on size/liquidity)
-                season_scale = 0.15 if now_utc.month == 9 else 1.0
+                season_scale = 0.15 if now_utc.month == 9 else (0.25 if now_utc.month in [6, 7] else 1.0)
                 calc_m = min(slot_capital * 0.90 * season_scale, max_allowed_margin) if long_ok else min(slot_capital * 0.30 * season_scale, max_allowed_margin)
                 entry_slip = 0.0006 + (0.005 * math.sqrt(calc_m / max(bar_vol_usd, 1.0)) if bar_vol_usd > 0 else 0.0)
                 real_entry_p = curr_p * (1.0 + entry_slip) if long_ok else curr_p * (1.0 - entry_slip)
