@@ -1,4 +1,4 @@
-import os, json, sqlite3, datetime, urllib.request, threading, time
+import os, json, sqlite3, datetime, urllib.request, threading, time, math
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 PORT = int(os.environ.get('PORT', 10000))
@@ -259,24 +259,30 @@ class Handler(BaseHTTPRequestHandler):
         bal = s_row[0] if s_row else 100.0
         vault = s_row[1] if s_row and len(s_row) > 1 and s_row[1] is not None else 0.0
         c.execute('SELECT sym, dir, entry, peak, sl, margin, lev, pyr, time FROM active')
-        act = c.fetchone()
+        actives = c.fetchall()
         c.execute('SELECT sym, dir, entry, exit, pnl, bal, time FROM history ORDER BY id DESC LIMIT 50')
         hist = c.fetchall()
         conn.close()
 
+        act_list = [
+            {
+                'symbol': a[0], 'dir': a[1], 'entry': a[2], 'peak': a[3],
+                'sl': a[4], 'margin': round(a[5], 2), 'leverage': a[6], 'pyramid_step': a[7],
+                'opened_at': a[8]
+            }
+            for a in actives
+        ]
+
         res = {
             'status': 'ONLINE_24_7',
-            'engine': 'Apex Ultimate Quant 20x (Dynamic Multi-Slot + Seasonality + Vault)',
+            'engine': 'Apex Ultimate Quant 22x (Dynamic Multi-Slot + Seasonality + Vault)',
             'balance_usd': round(bal, 2),
             'vault_usd': round(vault, 2),
             'total_net_worth_usd': round(bal + vault, 2),
-            'active_position': {
-                'symbol': act[0], 'dir': act[1], 'entry': act[2], 'peak': act[3],
-                'sl': act[4], 'margin': act[5], 'leverage': act[6], 'pyramid_step': act[7],
-                'opened_at': act[8]
-            } if act else None,
+            'active_position': act_list[0] if act_list else None,
+            'active_positions': act_list,
             'recent_history': [
-                {'symbol': h[0], 'dir': h[1], 'entry': h[2], 'exit': h[3], 'pnl': h[4], 'balance': h[5], 'closed_at': h[6]}
+                {'symbol': h[0], 'dir': h[1], 'entry': h[2], 'exit': h[3], 'pnl': round(h[4], 2), 'balance': round(h[5], 2), 'closed_at': h[6]}
                 for h in hist
             ]
         }
