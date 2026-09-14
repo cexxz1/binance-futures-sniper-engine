@@ -52,8 +52,8 @@ def get_slot_count(bal: float) -> int:
     return 6
 
 def get_current_leverage(month: int) -> int:
-    # ponytail: Q1 tax season (March/April) and Rektember (September) use 12x shield, rest of year uses 25x peak
-    return 12 if month in [3, 4, 9] else 25
+    # ponytail: Q1 tax season (March/April) and Rektember (September) use 12x shield, rest of year uses 24x turbo
+    return 12 if month in [3, 4, 9] else 24
 
 def scan_and_update():
     conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -81,19 +81,19 @@ def scan_and_update():
             bar_vol_usd = vol * p
             max_liquid_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / float(lev)))
 
-            # Ağırlıklı piramitleme ve kilitli pozitif breakeven kalkanı (29,160 grid search champion)
+            # Ağırlıklı piramitleme ve kilitli pozitif breakeven kalkanı (80/80/140 champion)
             if direction == 'LONG':
                 new_peak = max(peak, h)
                 gain = (new_peak - entry) / entry
-                init_m = margin / (1.0 + (pyr == 1) * 0.60 + (pyr == 2) * 1.20 + (pyr == 3) * 2.20)
-                if pyr == 0 and gain >= 0.035:
-                    add = init_m * 0.60
-                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 1; sl = max(sl, entry * 1.020)
-                elif pyr == 1 and gain >= 0.070:
-                    add = init_m * 0.60
-                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 2; sl = max(sl, entry * 1.040)
-                elif pyr == 2 and gain >= 0.140:
-                    add = init_m * 1.00
+                init_m = margin / (1.0 + (pyr == 1) * 0.80 + (pyr == 2) * 1.60 + (pyr == 3) * 3.00)
+                if pyr == 0 and gain >= 0.03:
+                    add = init_m * 0.80
+                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 1; sl = max(sl, entry * 1.015)
+                elif pyr == 1 and gain >= 0.06:
+                    add = init_m * 0.80
+                    if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 2; sl = max(sl, entry * 1.030)
+                elif pyr == 2 and gain >= 0.12:
+                    add = init_m * 1.40
                     if bal >= add: margin = min(margin + add, max_liquid_margin); pyr = 3; sl = max(sl, entry * 1.080)
 
                 if gain >= 0.05:
@@ -105,13 +105,13 @@ def scan_and_update():
             elif direction == 'SHORT':
                 new_peak = min(peak, l)
                 gain = (entry - new_peak) / entry
-                init_m = margin / (1.0 + (pyr == 1) * 0.60 + (pyr == 2) * 1.20 + (pyr == 3) * 2.20)
-                if pyr == 0 and gain >= 0.035:
-                    add = min(init_m * 0.60, max_liquid_margin - margin)
-                    if add > 0: margin += add; pyr = 1; sl = min(sl, entry * 0.980)
-                elif pyr == 1 and gain >= 0.070:
-                    add = min(init_m * 0.60, max_liquid_margin - margin)
-                    if add > 0: margin += add; pyr = 2; sl = min(sl, entry * 0.960)
+                init_m = margin / (1.0 + (pyr == 1) * 0.80 + (pyr == 2) * 1.60 + (pyr == 3) * 3.00)
+                if pyr == 0 and gain >= 0.03:
+                    add = min(init_m * 0.80, max_liquid_margin - margin)
+                    if add > 0: margin += add; pyr = 1; sl = min(sl, entry * 0.985)
+                elif pyr == 1 and gain >= 0.06:
+                    add = min(init_m * 0.80, max_liquid_margin - margin)
+                    if add > 0: margin += add; pyr = 2; sl = min(sl, entry * 0.970)
 
                 if gain >= 0.05:
                     sl = min(sl, new_peak * 1.065) # %6.5 Peak Trailing Stop (Winner)
@@ -127,7 +127,7 @@ def scan_and_update():
                 if pnl > 0:
                     consec_loss = 0
                     if bal > 5000.0:
-                        harvest = pnl * 0.20
+                        harvest = pnl * 0.30
                         bal -= harvest
                         vault += harvest
                 else:
@@ -275,7 +275,7 @@ class Handler(BaseHTTPRequestHandler):
 
         res = {
             'status': 'ONLINE_24_7',
-            'engine': 'Apex Ultimate Quant 25x (EMA 7/18/85 + Seasonality + Vault)',
+            'engine': 'Apex Ultimate Quant 24x (Dynamic Multi-Slot + 3M Compound + Vault Harvest)',
             'balance_usd': round(bal, 2),
             'vault_usd': round(vault, 2),
             'total_net_worth_usd': round(bal + vault, 2),
