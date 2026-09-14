@@ -197,7 +197,8 @@ def scan_and_update():
                 max_allowed_margin = min(100000.0, max(500.0, (bar_vol_usd * 0.02) / float(active_lev)))
 
                 # Apply realistic taker entry slippage (0.04% - 0.08% based on size/liquidity)
-                calc_m = min(slot_capital * 0.90, max_allowed_margin) if long_ok else min(slot_capital * 0.30, max_allowed_margin)
+                season_scale = 0.25 if now_utc.month == 9 else 1.0
+                calc_m = min(slot_capital * 0.90 * season_scale, max_allowed_margin) if long_ok else min(slot_capital * 0.30 * season_scale, max_allowed_margin)
                 entry_slip = 0.0006 + (0.005 * math.sqrt(calc_m / max(bar_vol_usd, 1.0)) if bar_vol_usd > 0 else 0.0)
                 real_entry_p = curr_p * (1.0 + entry_slip) if long_ok else curr_p * (1.0 - entry_slip)
 
