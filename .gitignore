@@ -1,5 +1,6 @@
+binance_180d_cache.json
+mtf_signals.sqlite
+mtf_signals.sqlite-wal
+mtf_signals.sqlite-shm
 __pycache__/
 *.pyc
-.venv/
-.env
-*.xlsx
