@@ -182,6 +182,8 @@ def scan_and_update():
                 p, o, h_bar, l_bar = closes[-1], closes[-2], highs[-1], lows[-1]
 
                 body = abs(p - o)
+                rng = (h_bar - l_bar)
+                if rng > 0 and (body / rng) < 0.35: continue # ponytail: skip thin-body wick trap bars
                 long_bad = (h_bar - max(p, o)) > (body * 1.8) if body > 0 else False
                 short_bad = (min(p, o) - l_bar) > (body * 1.8) if body > 0 else False
 
