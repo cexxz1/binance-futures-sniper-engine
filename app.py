@@ -123,10 +123,7 @@ def scan_and_update():
 
                 if pnl > 0:
                     consec_loss = 0
-                    if bal > 5000.0:
-                        harvest = pnl * 0.30
-                        bal -= harvest
-                        vault += harvest
+                    # ponytail: 100% Pure Compound maximizes exponential growth curve
                 else:
                     consec_loss += 1
                     if consec_loss >= 3:
